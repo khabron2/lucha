@@ -1,0 +1,17 @@
+{
+  "name": "LuchaStream",
+  "short_name": "LuchaStream",
+  "description": "Streaming de la Era de la Actitud",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#eab308",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3501/3501170.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

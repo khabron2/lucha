@@ -65,11 +65,7 @@ export const EventManagerModal: React.FC<EventManagerModalProps> = ({
           </div>
           
           <button 
-            onClick={() => {
-              if (confirm('¿Estás seguro de que quieres reiniciar todo el historial de vistos?')) {
-                onReset();
-              }
-            }}
+            onClick={onReset}
             className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-xs font-black uppercase tracking-widest transition-all"
           >
             <Trash2 className="w-4 h-4" />
@@ -80,7 +76,12 @@ export const EventManagerModal: React.FC<EventManagerModalProps> = ({
         {/* List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-2 custom-scrollbar">
           {[...eventos]
-            .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+            .sort((a, b) => {
+              const aViewed = viewedUrls.has(a.url_video);
+              const bViewed = viewedUrls.has(b.url_video);
+              if (aViewed !== bViewed) return aViewed ? 1 : -1;
+              return new Date(a.fecha).getTime() - new Date(b.fecha).getTime();
+            })
             .map((evento) => {
               const isViewed = viewedUrls.has(evento.url_video);
             return (

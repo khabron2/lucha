@@ -1,0 +1,54 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "lastLogin": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "ViewedEvent": {
+      "title": "Viewed Event",
+      "description": "Record of an event viewed by a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "viewedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "videoUrl"]
+    },
+    "VideoProgress": {
+      "title": "Video Progress",
+      "description": "Playback progress for a specific video",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "currentTime": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "videoUrl", "currentTime"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/users/{userId}/viewedEvents/{eventId}": {
+      "schema": "ViewedEvent",
+      "description": "Events marked as viewed by the user"
+    },
+    "/users/{userId}/videoProgress/{progressId}": {
+      "schema": "VideoProgress",
+      "description": "Playback progress for videos"
+    }
+  }
+}

@@ -1,8 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
 import { Evento } from '../types';
 import { cn } from '../lib/utils';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { onAuthStateChanged, User } from 'firebase/auth';
 
 interface VideoPlayerProps {
   evento: Evento | null;
@@ -13,7 +16,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [user, setUser] = useState<User | null>(null);
   const isYouTube = evento?.url_video.includes('youtube.com/embed');
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const toggleFullScreen = () => {
     if (isYouTube) {
@@ -82,7 +93,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
         const currentTime = player.currentTime();
         const videoUrl = player.currentSrc();
         if (videoUrl && currentTime > 0) {
+          // Local storage fallback
           localStorage.setItem(`progress_${videoUrl}`, currentTime.toString());
+          
+          // Firestore sync (throttled by timeupdate frequency, but we could add more throttling)
+          if (auth.currentUser) {
+            const progressId = btoa(videoUrl).replace(/\//g, '_');
+            const path = `users/${auth.currentUser.uid}/videoProgress/${progressId}`;
+            setDoc(doc(db, `users/${auth.currentUser.uid}/videoProgress`, progressId), {
+              userId: auth.currentUser.uid,
+              videoUrl: videoUrl,
+              currentTime: currentTime,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(err => {
+              // Silent fail for progress sync to avoid spamming errors
+              console.warn('Progress sync failed', err);
+            });
+          }
         }
       });
 
@@ -106,10 +133,32 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
       });
 
       // Load progress
-      const savedProgress = localStorage.getItem(`progress_${videoUrl}`);
-      if (savedProgress) {
-        player.currentTime(parseFloat(savedProgress));
-      }
+      const loadProgress = async () => {
+        let startTime = 0;
+        
+        // Try Firestore first
+        if (user) {
+          const progressId = btoa(videoUrl).replace(/\//g, '_');
+          const progressDoc = await getDoc(doc(db, `users/${user.uid}/videoProgress`, progressId));
+          if (progressDoc.exists()) {
+            startTime = progressDoc.data().currentTime;
+          }
+        }
+        
+        // Fallback to local storage if not in Firestore or if user is guest
+        if (startTime === 0) {
+          const savedProgress = localStorage.getItem(`progress_${videoUrl}`);
+          if (savedProgress) {
+            startTime = parseFloat(savedProgress);
+          }
+        }
+
+        if (startTime > 0) {
+          player.currentTime(startTime);
+        }
+      };
+
+      loadProgress();
 
       const playPromise = player.play();
       if (playPromise !== undefined) {
