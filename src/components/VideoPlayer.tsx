@@ -63,7 +63,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
       videoRef.current.appendChild(videoElement);
 
       const player = playerRef.current = videojs(videoElement, {
-        autoplay: 'muted',
+        autoplay: true,
         controls: true,
         responsive: true,
         fluid: true,

@@ -7,7 +7,7 @@ import { EventManagerModal } from './components/EventManagerModal';
 import { Evento } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, AlertCircle, RefreshCw, LogIn, LogOut, User as UserIcon } from 'lucide-react';
-import { auth, db, loginWithGoogle, logout, handleFirestoreError, OperationType } from './firebase';
+import { auth, db, loginWithGoogle, logout, handleFirestoreError, OperationType, getRedirectResult } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, query, where, serverTimestamp } from 'firebase/firestore';
 
@@ -27,6 +27,13 @@ export default function App() {
 
   // Auth listener
   useEffect(() => {
+    // Handle redirect result (for TV/Mobile browsers that block popups)
+    getRedirectResult(auth).catch(err => {
+      if (err.code !== 'auth/no-recent-redirect-operation') {
+        handleFirestoreError(err, OperationType.GET, 'auth-redirect');
+      }
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthReady(true);
@@ -258,15 +265,19 @@ export default function App() {
   // TV Navigation support
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        const focusable = document.querySelectorAll('button, input, [tabindex="0"]');
-        const index = Array.from(focusable).indexOf(document.activeElement as HTMLElement);
-        
-        if (e.key === 'ArrowDown' && index < focusable.length - 1) {
-          (focusable[index + 1] as HTMLElement).focus();
-        } else if (e.key === 'ArrowUp' && index > 0) {
-          (focusable[index - 1] as HTMLElement).focus();
-        }
+      const focusable = document.querySelectorAll('button, input, [tabindex="0"], a');
+      const focusableArray = Array.from(focusable) as HTMLElement[];
+      const index = focusableArray.indexOf(document.activeElement as HTMLElement);
+
+      if (e.key === 'ArrowDown') {
+        if (index < focusableArray.length - 1) focusableArray[index + 1].focus();
+      } else if (e.key === 'ArrowUp') {
+        if (index > 0) focusableArray[index - 1].focus();
+      } else if (e.key === 'ArrowRight') {
+        // Simple horizontal navigation
+        if (index < focusableArray.length - 1) focusableArray[index + 1].focus();
+      } else if (e.key === 'ArrowLeft') {
+        if (index > 0) focusableArray[index - 1].focus();
       }
     };
 
@@ -285,31 +296,31 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
-      <div className="flex flex-col md:flex-row items-center justify-between bg-slate-900/50 backdrop-blur-md border-b border-slate-800 px-4 md:px-8 py-2 gap-4">
+      <div className="flex flex-col md:flex-row items-center justify-between bg-slate-900/50 backdrop-blur-md border-b border-slate-800 px-4 md:px-8 py-1 gap-2">
         <Header />
         <div className="flex items-center gap-4">
           {user ? (
-            <div className="flex items-center gap-3 bg-slate-800/50 p-1 pr-3 rounded-full border border-slate-700">
-              <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-yellow-500" />
+            <div className="flex items-center gap-2 bg-slate-800/50 p-0.5 pr-2 rounded-full border border-slate-700">
+              <img src={user.photoURL || ''} alt={user.displayName || ''} className="w-6 h-6 rounded-full border border-yellow-500" />
               <div className="hidden sm:block">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Sincronizado</p>
-                <p className="text-xs font-black text-white truncate max-w-[100px]">{user.displayName}</p>
+                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Sincronizado</p>
+                <p className="text-[10px] font-black text-white truncate max-w-[80px]">{user.displayName}</p>
               </div>
               <button 
                 onClick={logout}
-                className="p-1.5 hover:bg-red-500/20 text-slate-400 hover:text-red-500 rounded-full transition-all"
+                className="p-1 hover:bg-red-500/20 text-slate-400 hover:text-red-500 rounded-full transition-all"
                 title="Cerrar sesión"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-3 h-3" />
               </button>
             </div>
           ) : (
             <button 
               onClick={loginWithGoogle}
-              className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-black px-4 py-2 rounded-full font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
+              className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-black px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
             >
-              <LogIn className="w-4 h-4" />
-              Sincronizar Dispositivos
+              <LogIn className="w-3 h-3" />
+              Sincronizar
             </button>
           )}
         </div>

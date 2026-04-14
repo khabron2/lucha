@@ -1,17 +1,34 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User, browserLocalPersistence, setPersistence } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteDoc, serverTimestamp, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// Ensure local persistence for TV/Mobile
+setPersistence(auth, browserLocalPersistence);
+
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
 
 // Auth helpers
-export const loginWithGoogle = () => signInWithPopup(auth, googleProvider);
+export const loginWithGoogle = async () => {
+  try {
+    // Try popup first (standard for PC/Mobile)
+    await signInWithPopup(auth, googleProvider);
+  } catch (error: any) {
+    // If popup is blocked or not supported (common on TVs), use redirect
+    if (error.code === 'auth/popup-blocked' || error.code === 'auth/operation-not-supported-in-this-environment') {
+      await signInWithRedirect(auth, googleProvider);
+    } else {
+      handleFirestoreError(error, OperationType.GET, 'auth');
+    }
+  }
+};
 export const logout = () => signOut(auth);
+export { getRedirectResult };
 
 // Firestore Error Handler
 export enum OperationType {
