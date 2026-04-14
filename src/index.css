@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --color-slate-950: #020617;
+  --color-slate-900: #0f172a;
+  --color-slate-800: #1e293b;
+}
+
+:root {
+  background-color: #020617;
+  color: white;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Video.js Overrides */
+.video-js {
+  font-family: inherit;
+}
+
+.vjs-theme-city .vjs-big-play-button {
+  background-color: rgba(234, 179, 8, 0.9);
+  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  line-height: 80px;
+  margin-top: -40px;
+  margin-left: -40px;
+  border: none;
+  box-shadow: 0 0 30px rgba(234, 179, 8, 0.4);
+}
+
+.vjs-theme-city .vjs-big-play-button:hover {
+  background-color: #eab308;
+  transform: scale(1.1);
+  transition: all 0.2s ease;
+}
+
+.vjs-control-bar {
+  background: linear-gradient(to top, rgba(0,0,0,0.9), transparent) !important;
+  height: 60px !important;
+}
+
+/* TV Focus Styles */
+:focus-visible {
+  outline: 3px solid #eab308;
+  outline-offset: 2px;
+}
