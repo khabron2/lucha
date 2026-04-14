@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, AlertCircle, RefreshCw, LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { auth, db, loginWithGoogle, logout, handleFirestoreError, OperationType, getRedirectResult } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, query, where, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
 
 // Mock API URL (In a real app, this would be the Google Sheets API endpoint)
 const API_URL = 'https://api.jsonbin.io/v3/b/661ba672ad19ca34f8595914'; // Example URL or placeholder
@@ -24,14 +24,23 @@ export default function App() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Auth listener
   useEffect(() => {
+    setIsSyncing(true);
     // Handle redirect result (for TV/Mobile browsers that block popups)
-    getRedirectResult(auth).catch(err => {
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        console.log('Redirect login successful:', result.user.email);
+      }
+    }).catch(err => {
       if (err.code !== 'auth/no-recent-redirect-operation') {
+        console.error('Redirect result error:', err);
         handleFirestoreError(err, OperationType.GET, 'auth-redirect');
       }
+    }).finally(() => {
+      setIsSyncing(false);
     });
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -40,6 +49,17 @@ export default function App() {
       if (currentUser) {
         // Sync user profile
         const userDoc = doc(db, 'users', currentUser.uid);
+        
+        // Get user data to restore last show
+        getDoc(userDoc).then(docSnap => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.lastViewedShowUrl && !selectedEvento) {
+              // We'll handle restoration in the fetchEventos or here if already fetched
+            }
+          }
+        });
+
         setDoc(userDoc, {
           uid: currentUser.uid,
           email: currentUser.email,
@@ -148,11 +168,27 @@ export default function App() {
 
       // Load last selected event from localStorage
       const lastSelected = localStorage.getItem('lastSelectedEvento');
+      let restoredEvento: Evento | null = null;
+      
       if (lastSelected) {
         const parsed = JSON.parse(lastSelected);
-        const found = mockData.find(e => e.url_video === parsed.url_video);
-        if (found) setSelectedEvento(found);
+        restoredEvento = mockData.find(e => e.url_video === parsed.url_video) || null;
       }
+
+      // If user is logged in, try to restore from Firestore (prioritize Firestore)
+      if (auth.currentUser) {
+        const userDoc = doc(db, 'users', auth.currentUser.uid);
+        const docSnap = await getDoc(userDoc);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.lastViewedShowUrl) {
+            const found = mockData.find(e => e.url_video === data.lastViewedShowUrl);
+            if (found) restoredEvento = found;
+          }
+        }
+      }
+
+      if (restoredEvento) setSelectedEvento(restoredEvento);
 
       setLastUpdate(new Date());
       setError(null);
@@ -176,6 +212,15 @@ export default function App() {
     setSelectedEvento(evento);
     localStorage.setItem('lastSelectedEvento', JSON.stringify(evento));
     
+    // Sync last viewed show to Firestore
+    if (user) {
+      const userDoc = doc(db, 'users', user.uid);
+      updateDoc(userDoc, {
+        lastViewedShowUrl: evento.url_video,
+        lastViewedAt: serverTimestamp()
+      }).catch(err => console.warn('Failed to sync last show', err));
+    }
+
     // Scroll to top on mobile when selecting an event
     if (window.innerWidth < 768) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -219,6 +264,13 @@ export default function App() {
       newViewed.add(url);
       setViewedUrls(newViewed);
       localStorage.setItem('viewedEventUrls', JSON.stringify(Array.from(newViewed)));
+    }
+
+    // Auto-select next show
+    const currentIndex = eventos.findIndex(e => e.url_video === url);
+    if (currentIndex !== -1 && currentIndex < eventos.length - 1) {
+      const nextShow = eventos[currentIndex + 1];
+      handleSelectEvento(nextShow);
     }
   };
 
@@ -317,10 +369,11 @@ export default function App() {
           ) : (
             <button 
               onClick={loginWithGoogle}
-              className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-black px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20"
+              disabled={isSyncing}
+              className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-black px-3 py-1 rounded-full font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-yellow-500/20 disabled:opacity-50"
             >
-              <LogIn className="w-3 h-3" />
-              Sincronizar
+              {isSyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogIn className="w-3 h-3" />}
+              {isSyncing ? 'Sincronizando...' : 'Sincronizar'}
             </button>
           )}
         </div>

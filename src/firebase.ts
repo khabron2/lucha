@@ -16,14 +16,24 @@ export const googleProvider = new GoogleAuthProvider();
 // Auth helpers
 export const loginWithGoogle = async () => {
   try {
+    console.log('Attempting Google Login...');
     // Try popup first (standard for PC/Mobile)
     await signInWithPopup(auth, googleProvider);
   } catch (error: any) {
+    console.warn('Popup failed, trying redirect...', error.code);
     // If popup is blocked or not supported (common on TVs), use redirect
-    if (error.code === 'auth/popup-blocked' || error.code === 'auth/operation-not-supported-in-this-environment') {
-      await signInWithRedirect(auth, googleProvider);
+    if (error.code === 'auth/popup-blocked' || 
+        error.code === 'auth/operation-not-supported-in-this-environment' ||
+        error.code === 'auth/popup-closed-by-user') {
+      try {
+        await signInWithRedirect(auth, googleProvider);
+      } catch (redirectError: any) {
+        console.error('Redirect failed:', redirectError);
+        handleFirestoreError(redirectError, OperationType.GET, 'auth-redirect-init');
+      }
     } else {
-      handleFirestoreError(error, OperationType.GET, 'auth');
+      console.error('Auth error:', error);
+      handleFirestoreError(error, OperationType.GET, 'auth-popup');
     }
   }
 };

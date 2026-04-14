@@ -9,7 +9,8 @@
         "email": { "type": "string" },
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
-        "lastLogin": { "type": "string", "format": "date-time" }
+        "lastLogin": { "type": "string", "format": "date-time" },
+        "lastViewedShowUrl": { "type": "string" }
       },
       "required": ["uid", "email"]
     },
