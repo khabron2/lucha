@@ -146,7 +146,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
       <div className="relative aspect-video w-full bg-slate-900 flex items-center justify-center overflow-hidden rounded-xl border border-slate-800 group">
         <div className="absolute inset-0 opacity-40 bg-gradient-to-t from-slate-950 to-transparent z-10" />
         <img 
-          src="https://picsum.photos/seed/wrestling/1280/720" 
+          src="https://wallpapercave.com/wp/wp8408479.jpg" 
           alt="Banner" 
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           referrerPolicy="no-referrer"
