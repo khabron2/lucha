@@ -3,9 +3,8 @@ import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
 import { Evento } from '../types';
 import { cn } from '../lib/utils';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { onAuthStateChanged, User } from 'firebase/auth';
+
+import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface VideoPlayerProps {
   evento: Evento | null;
@@ -16,15 +15,39 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [useNative, setUseNative] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const isYouTube = evento?.url_video.includes('youtube.com/embed');
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => unsubscribe();
-  }, []);
+  const reloadVideo = () => {
+    setError(null);
+    setUseNative(false);
+    setIsLoading(true);
+    if (playerRef.current) {
+      const player = playerRef.current;
+      const videoUrl = evento?.url_video;
+      if (videoUrl) {
+        // Add cache buster to bypass potential server/cache issues
+        const buster = videoUrl.includes('?') ? `&t=${Date.now()}` : `?t=${Date.now()}`;
+        player.src({
+          src: videoUrl + buster,
+          type: videoUrl.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp4',
+        });
+        player.load();
+        player.play().catch((e: any) => console.log("Play failed on reload", e));
+      }
+    }
+  };
+
+  const switchToNative = () => {
+    setError(null);
+    setUseNative(true);
+    if (playerRef.current && !playerRef.current.isDisposed()) {
+      playerRef.current.dispose();
+      playerRef.current = null;
+    }
+  };
 
   const toggleFullScreen = () => {
     if (isYouTube) {
@@ -60,15 +83,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
     if (!playerRef.current && videoRef.current) {
       const videoElement = document.createElement('video-js');
       videoElement.classList.add('vjs-big-play-centered', 'vjs-theme-city');
+      videoElement.setAttribute('crossorigin', 'anonymous');
+      videoElement.setAttribute('playsinline', 'true');
       videoRef.current.appendChild(videoElement);
 
       const player = playerRef.current = videojs(videoElement, {
         autoplay: true,
-        muted: false, // Explicitly unmute
+        muted: false,
         controls: true,
         responsive: true,
         fluid: true,
+        preload: 'metadata',
         playbackRates: [0.5, 1, 1.5, 2],
+        errorDisplay: false,
+        html5: {
+          vhs: { overrideNative: true },
+          nativeAudioTracks: false,
+          nativeVideoTracks: false
+        },
         controlBar: {
           children: [
             'playToggle',
@@ -89,28 +121,41 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
         console.log('player is ready');
       });
 
+      player.on('waiting', () => setIsLoading(true));
+      player.on('playing', () => {
+        setIsLoading(false);
+        setError(null);
+      });
+      player.on('canplay', () => setIsLoading(false));
+
+      player.on('error', () => {
+        setIsLoading(false);
+        const err = player.error();
+        console.error('VideoJS Error:', err);
+        
+        // If it's a source error (Code 4), try to switch to native automatically
+        if (err && err.code === 4) {
+          console.log('Code 4 detected, switching to native mode...');
+          switchToNative();
+        } else {
+          setError(`Error: ${err ? err.message : 'Desconocido'}`);
+        }
+      });
+
+      player.on('loadedmetadata', () => {
+        const videoUrl = player.currentSrc();
+        const savedProgress = localStorage.getItem(`progress_${videoUrl}`);
+        if (savedProgress) {
+          player.currentTime(parseFloat(savedProgress));
+        }
+      });
+
       // Save progress periodically
       player.on('timeupdate', () => {
         const currentTime = player.currentTime();
         const videoUrl = player.currentSrc();
         if (videoUrl && currentTime > 0) {
-          // Local storage fallback
           localStorage.setItem(`progress_${videoUrl}`, currentTime.toString());
-          
-          // Firestore sync (throttled by timeupdate frequency, but we could add more throttling)
-          if (auth.currentUser) {
-            const progressId = btoa(videoUrl).replace(/\//g, '_');
-            const path = `users/${auth.currentUser.uid}/videoProgress/${progressId}`;
-            setDoc(doc(db, `users/${auth.currentUser.uid}/videoProgress`, progressId), {
-              userId: auth.currentUser.uid,
-              videoUrl: videoUrl,
-              currentTime: currentTime,
-              updatedAt: serverTimestamp()
-            }, { merge: true }).catch(err => {
-              // Silent fail for progress sync to avoid spamming errors
-              console.warn('Progress sync failed', err);
-            });
-          }
         }
       });
 
@@ -126,40 +171,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
   useEffect(() => {
     const player = playerRef.current;
 
-    if (player && evento) {
+    if (player && evento && !useNative) {
+      setError(null);
+      setIsLoading(true);
       const videoUrl = evento.url_video;
+      
       player.src({
         src: videoUrl,
         type: videoUrl.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp4',
       });
-
-      // Load progress
-      const loadProgress = async () => {
-        let startTime = 0;
-        
-        // Try Firestore first
-        if (user) {
-          const progressId = btoa(videoUrl).replace(/\//g, '_');
-          const progressDoc = await getDoc(doc(db, `users/${user.uid}/videoProgress`, progressId));
-          if (progressDoc.exists()) {
-            startTime = progressDoc.data().currentTime;
-          }
-        }
-        
-        // Fallback to local storage if not in Firestore or if user is guest
-        if (startTime === 0) {
-          const savedProgress = localStorage.getItem(`progress_${videoUrl}`);
-          if (savedProgress) {
-            startTime = parseFloat(savedProgress);
-          }
-        }
-
-        if (startTime > 0) {
-          player.currentTime(startTime);
-        }
-      };
-
-      loadProgress();
 
       const playPromise = player.play();
       if (playPromise !== undefined) {
@@ -178,6 +198,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
       playerRef.current = null;
     }
   }, [isYouTube]);
+
+  useEffect(() => {
+    setUseNative(false);
+    setError(null);
+  }, [evento?.url_video]);
 
   // Dispose the player on unmount
   useEffect(() => {
@@ -226,9 +251,64 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
             allowFullScreen
           />
         </div>
+      ) : useNative ? (
+        <div className="aspect-video w-full bg-black relative">
+          <video 
+            src={evento.url_video + (evento.url_video.includes('?') ? `&retry=${Date.now()}` : `?retry=${Date.now()}`)} 
+            controls 
+            autoPlay 
+            playsInline
+            preload="auto"
+            crossOrigin="anonymous"
+            className="w-full h-full"
+            onLoadStart={() => setIsLoading(true)}
+            onCanPlay={() => setIsLoading(false)}
+            onEnded={() => onEnded?.(evento.url_video)}
+            onError={(e) => {
+              setIsLoading(false);
+              setError("Incluso el modo compatible falló. Es probable que el servidor de Archive.org esté caído o bloqueando la conexión desde tu TV.");
+            }}
+          />
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+              <Loader2 className="w-10 h-10 text-yellow-500 animate-spin" />
+            </div>
+          )}
+        </div>
       ) : (
-        <div data-vjs-player>
-          <div ref={videoRef} />
+        <div className="relative">
+          <div data-vjs-player>
+            <div ref={videoRef} />
+          </div>
+          
+          {isLoading && !error && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+              <Loader2 className="w-10 h-10 text-yellow-500 animate-spin" />
+            </div>
+          )}
+
+          {error && (
+            <div className="absolute inset-0 z-50 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center">
+              <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+              <h3 className="text-xl font-bold text-white mb-2">No se pudo cargar el video</h3>
+              <p className="text-slate-400 text-sm mb-6 max-w-xs">{error}</p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button 
+                  onClick={reloadVideo}
+                  className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-2 rounded-full font-black uppercase text-xs tracking-widest transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Reintentar
+                </button>
+                <button 
+                  onClick={switchToNative}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-2 rounded-full font-black uppercase text-xs tracking-widest transition-all border border-slate-700"
+                >
+                  Modo Compatible
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
       <div className="p-4 bg-slate-900/50 backdrop-blur-sm border-t border-slate-800">
