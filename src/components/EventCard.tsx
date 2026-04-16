@@ -47,7 +47,11 @@ export const EventCard: React.FC<EventCardProps> = ({ evento, isActive, onClick 
           <div className="flex items-center gap-2 mb-1">
             <span className={cn(
               "text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest",
-              evento.empresa === 'WWE' ? "bg-red-600/20 text-red-500" : "bg-yellow-500/20 text-yellow-500"
+              (evento.empresa === 'RAW' || evento.empresa === 'WWE') ? "bg-red-600 text-white" : 
+              evento.empresa === 'SMACKDOWN' ? "bg-blue-600 text-white" : 
+              evento.empresa === 'PPV' ? "bg-yellow-500 text-black" :
+              evento.empresa === 'ON DEMAND' ? "bg-indigo-600 text-white" :
+              "bg-slate-800 text-slate-400"
             )}>
               {evento.empresa}
             </span>
@@ -57,7 +61,7 @@ export const EventCard: React.FC<EventCardProps> = ({ evento, isActive, onClick 
             </span>
           </div>
           <h3 className={cn(
-            "text-sm font-bold truncate transition-colors",
+            "text-xs font-bold truncate transition-colors",
             isActive ? "text-yellow-400" : "text-white group-hover:text-yellow-100"
           )}>
             {evento.titulo}

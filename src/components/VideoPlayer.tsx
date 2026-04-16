@@ -4,7 +4,7 @@ import 'video.js/dist/video-js.css';
 import { Evento } from '../types';
 import { cn } from '../lib/utils';
 
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, SkipForward } from 'lucide-react';
 
 interface VideoPlayerProps {
   evento: Evento | null;
@@ -19,24 +19,43 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
   const [useNative, setUseNative] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const isYouTube = evento?.url_video.includes('youtube.com/embed');
+  const isArchive = evento?.url_video.includes('archive.org/download/');
+
+  const getArchiveEmbedUrl = (url: string) => {
+    try {
+      // Format: https://archive.org/download/IDENTIFIER/FILENAME.mp4
+      const parts = url.split('archive.org/download/')[1].split('/');
+      const identifier = parts[0];
+      const filename = parts[1];
+      
+      // Using /embed/IDENTIFIER/FILENAME format which is more direct
+      // We still include the file param just in case
+      return `https://archive.org/embed/${identifier}/${filename}?autoplay=1`;
+    } catch (e) {
+      return url;
+    }
+  };
 
   const reloadVideo = () => {
     setError(null);
     setUseNative(false);
     setIsLoading(true);
+    
     if (playerRef.current) {
       const player = playerRef.current;
-      const videoUrl = evento?.url_video;
-      if (videoUrl) {
-        // Add cache buster to bypass potential server/cache issues
-        const buster = videoUrl.includes('?') ? `&t=${Date.now()}` : `?t=${Date.now()}`;
+      if (evento) {
         player.src({
-          src: videoUrl + buster,
-          type: videoUrl.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp4',
+          src: evento.url_video,
+          type: 'video/mp4',
         });
         player.load();
-        player.play().catch((e: any) => console.log("Play failed on reload", e));
+        player.muted(false);
+        player.volume(1.0);
+        player.play().catch(() => switchToNative());
       }
+    } else {
+      // If player is not initialized, just let the component re-render
+      window.location.reload(); 
     }
   };
 
@@ -66,7 +85,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
         if (player.isFullscreen()) {
           player.exitFullscreen();
         } else {
+          player.muted(false);
+          player.volume(1.0);
           player.requestFullscreen();
+        }
+      } else {
+        // Native video element fallback
+        const videoElement = document.querySelector('video');
+        if (videoElement) {
+          if (!document.fullscreenElement) {
+            videoElement.muted = false;
+            videoElement.volume = 1.0;
+            videoElement.requestFullscreen().catch(() => {});
+          } else {
+            document.exitFullscreen();
+          }
         }
       }
     }
@@ -76,7 +109,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
     const handleToggleFS = () => toggleFullScreen();
     window.addEventListener('toggle-video-fullscreen', handleToggleFS);
     return () => window.removeEventListener('toggle-video-fullscreen', handleToggleFS);
-  }, [isYouTube]);
+  }, [isYouTube, isArchive]);
 
   useEffect(() => {
     // Make sure Video.js player is only initialized once
@@ -93,32 +126,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
         controls: true,
         responsive: true,
         fluid: true,
-        preload: 'metadata',
+        preload: 'auto',
         playbackRates: [0.5, 1, 1.5, 2],
         errorDisplay: false,
         html5: {
-          vhs: { overrideNative: true },
-          nativeAudioTracks: false,
-          nativeVideoTracks: false
+          vhs: { overrideNative: false }
         },
-        controlBar: {
-          children: [
-            'playToggle',
-            'volumePanel',
-            'currentTimeDisplay',
-            'timeDivider',
-            'durationDisplay',
-            'progressControl',
-            'liveDisplay',
-            'remainingTimeDisplay',
-            'playbackRateMenuButton',
-            'subsCapsButton',
-            'audioTrackButton',
-            'fullscreenToggle',
-          ],
-        },
+        sources: evento ? [{
+          src: evento.url_video,
+          type: 'video/mp4'
+        }] : []
       }, () => {
         console.log('player is ready');
+        
+        // Load progress after player is ready
+        if (evento) {
+          const savedProgress = localStorage.getItem(`progress_${evento.url_video}`);
+          if (savedProgress) {
+            player.currentTime(parseFloat(savedProgress));
+          }
+        }
       });
 
       player.on('waiting', () => setIsLoading(true));
@@ -143,11 +170,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
       });
 
       player.on('loadedmetadata', () => {
-        const videoUrl = player.currentSrc();
-        const savedProgress = localStorage.getItem(`progress_${videoUrl}`);
-        if (savedProgress) {
-          player.currentTime(parseFloat(savedProgress));
-        }
+        setIsLoading(false);
       });
 
       // Save progress periodically
@@ -160,9 +183,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
       });
 
       player.on('ended', () => {
-        const videoUrl = player.currentSrc();
-        if (videoUrl && onEnded) {
-          onEnded(videoUrl);
+        if (onEnded && evento) {
+          onEnded(evento.url_video);
         }
       });
     }
@@ -170,34 +192,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
 
   useEffect(() => {
     const player = playerRef.current;
-
-    if (player && evento && !useNative) {
-      setError(null);
-      setIsLoading(true);
-      const videoUrl = evento.url_video;
-      
-      player.src({
-        src: videoUrl,
-        type: videoUrl.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp4',
-      });
-
-      const playPromise = player.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((error: any) => {
-          // Autoplay was prevented
-          console.log("Autoplay prevented. User must interact with the document first.", error);
-        });
-      }
-    }
-  }, [evento]);
-
-  useEffect(() => {
-    const player = playerRef.current;
-    if (isYouTube && player && !player.isDisposed()) {
+    if ((isYouTube || isArchive) && player && !player.isDisposed()) {
       player.dispose();
       playerRef.current = null;
     }
-  }, [isYouTube]);
+  }, [isYouTube, isArchive]);
 
   useEffect(() => {
     setUseNative(false);
@@ -251,10 +250,46 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
             allowFullScreen
           />
         </div>
+      ) : isArchive && !useNative ? (
+        <div className="aspect-video w-full relative bg-black">
+          <iframe
+            key={evento.url_video}
+            src={getArchiveEmbedUrl(evento.url_video)}
+            title={evento.titulo}
+            className="w-full h-full"
+            allowFullScreen
+            allow="autoplay"
+            onLoad={() => setIsLoading(false)}
+          />
+          <div className="absolute top-4 left-4 z-20 flex gap-2">
+            <button 
+              onClick={() => onEnded?.(evento.url_video)}
+              className="bg-yellow-500 hover:bg-yellow-400 text-black text-[10px] font-bold px-3 py-1 rounded transition-colors flex items-center gap-1 shadow-lg"
+            >
+              <SkipForward className="w-3 h-3" />
+              Siguiente Show
+            </button>
+          </div>
+          <div className="absolute top-4 right-4 z-20 flex gap-2">
+            <button 
+              onClick={reloadVideo}
+              className="bg-slate-900/80 hover:bg-slate-800 text-white text-[10px] px-3 py-1 rounded border border-slate-700 backdrop-blur-sm transition-colors shadow-lg flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Recargar
+            </button>
+            <button 
+              onClick={switchToNative}
+              className="bg-slate-900/80 hover:bg-slate-800 text-white text-[10px] px-3 py-1 rounded border border-slate-700 backdrop-blur-sm transition-colors shadow-lg"
+            >
+              Reproductor Alternativo
+            </button>
+          </div>
+        </div>
       ) : useNative ? (
         <div className="aspect-video w-full bg-black relative">
           <video 
-            src={evento.url_video + (evento.url_video.includes('?') ? `&retry=${Date.now()}` : `?retry=${Date.now()}`)} 
+            src={evento.url_video} 
             controls 
             autoPlay 
             playsInline
@@ -266,7 +301,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
             onEnded={() => onEnded?.(evento.url_video)}
             onError={(e) => {
               setIsLoading(false);
-              setError("Incluso el modo compatible falló. Es probable que el servidor de Archive.org esté caído o bloqueando la conexión desde tu TV.");
+              setError("El servidor de Archive.org no responde o el formato no es compatible. Intenta recargar la página.");
             }}
           />
           {isLoading && (
@@ -317,7 +352,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
             <div className="flex items-center gap-2 mb-1">
               <span className={cn(
                 "px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider",
-                evento.empresa === 'WWE' ? "bg-red-600 text-white" : "bg-yellow-500 text-black"
+                (evento.empresa === 'RAW' || evento.empresa === 'WWE') ? "bg-red-600 text-white" : 
+                evento.empresa === 'SMACKDOWN' ? "bg-blue-600 text-white" : 
+                evento.empresa === 'PPV' ? "bg-yellow-500 text-black" :
+                evento.empresa === 'ON DEMAND' ? "bg-indigo-600 text-white" :
+                "bg-slate-800 text-slate-400"
               )}>
                 {evento.empresa}
               </span>
@@ -328,7 +367,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ evento, onEnded }) => 
                 </span>
               )}
             </div>
-            <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight leading-tight">
+            <h1 className="text-lg md:text-xl font-bold text-white tracking-tight leading-tight">
               {evento.titulo}
             </h1>
             <p className="text-slate-400 text-sm font-medium mt-1">

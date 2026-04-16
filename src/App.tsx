@@ -4,6 +4,7 @@ import { VideoPlayer } from './components/VideoPlayer';
 import { Sidebar } from './components/Sidebar';
 import { NavigationMenu } from './components/NavigationMenu';
 import { EventManagerModal } from './components/EventManagerModal';
+import { OnDemandFormModal } from './components/OnDemandFormModal';
 import { Evento } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
@@ -16,13 +17,14 @@ export default function App() {
   const [selectedEvento, setSelectedEvento] = useState<Evento | null>(null);
   const [viewedUrls, setViewedUrls] = useState<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isOnDemandOpen, setIsOnDemandOpen] = useState(false);
+  const [onDemandEventos, setOnDemandEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   const fetchEventos = useCallback(async () => {
     try {
-      // Mock Data - RAW 2001 Episodes
       const raw2001Dates = [
         "2001-01-01", "2001-01-08", "2001-01-15", "2001-01-22", "2001-01-29",
         "2001-02-05", "2001-02-12", "2001-02-19", "2001-02-26",
@@ -54,25 +56,25 @@ export default function App() {
       ];
 
       const rawData: Evento[] = raw2001Dates.map(date => ({
-        titulo: `Raw - ${date.split('-').reverse().join('-')}`,
+        titulo: `Raw is War - ${date.split('-').reverse().join('-')}`,
         fecha: date,
-        empresa: "WWE",
+        empresa: "RAW",
         url_video: `https://archive.org/download/WAR-2001/${date}.mp4`,
         imagen: `https://www.planetawrestling.com/wp-content/uploads/2022/11/RAW-is-WAR-logo-1997-300x192.jpg`,
         duracion: "01:35:00"
       }));
 
       const sdData: Evento[] = smackdown2001Dates.map(date => ({
-        titulo: `Smackdown - ${date.split('-').reverse().join('-')}`,
+        titulo: `SmackDown! - ${date.split('-').reverse().join('-')}`,
         fecha: date,
-        empresa: "WWE",
+        empresa: "SMACKDOWN",
         url_video: `https://archive.org/download/2001.03.15/${date.replace(/-/g, '.')}.mp4`,
         imagen: `https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/feb152e2-38e3-4ee6-ab4a-ed3ef8e04f54/dg0yvn3-c90c7a65-27d0-4af9-a009-7bebaff76667.png/v1/fill/w_1259,h_634/wwf_smackdown__1999___2001_logo_v1_by_insanity_designs_dg0yvn3-pre.png?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7ImhlaWdodCI6Ijw9NjUyNCIsInBhdGgiOiJcL2ZcL2ZlYjE1MmUyLTM4ZTMtNGVlNi1hYjRhLWVkM2VmOGUwNGY1NFwvZGcweXZuMy1jOTBjN2E2NS0yN2QwLTRhZjktYTAwOS03YmViYWZmNzY2NjcucG5nIiwid2lkdGgiOiI8PTEyOTQ0In1dXSwiYXVkIjpbInVybjpzZXJ2aWNlOmltYWdlLm9wZXJhdGlvbnMiXX0.uhUKPPDziZ13OAZSD6f6Mei_sXiEF5CAdnFI0yzA6v8`,
-        duracion: "01:28:00"
+        duracion: "01:25:00"
       }));
 
       const mockData = [
-        ...rawData, 
+        ...rawData,
         ...sdData,
         {
           titulo: "WrestleMania X-Seven",
@@ -82,8 +84,15 @@ export default function App() {
           imagen: "https://i.ytimg.com/vi/uhAauCAGf8A/maxresdefault.jpg",
           duracion: "03:45:00"
         }
-      ];
+      ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+      
       setEventos(mockData);
+      
+      // Load user added On Demand events
+      const savedOnDemand = localStorage.getItem('onDemandEventos');
+      if (savedOnDemand) {
+        setOnDemandEventos(JSON.parse(savedOnDemand));
+      }
       
       // Load viewed events from localStorage
       const savedViewed = localStorage.getItem('viewedEventUrls');
@@ -137,9 +146,9 @@ export default function App() {
     localStorage.setItem('viewedEventUrls', JSON.stringify(Array.from(newViewed)));
 
     // Auto-select next show
-    const currentIndex = eventos.findIndex(e => e.url_video === url);
-    if (currentIndex !== -1 && currentIndex < eventos.length - 1) {
-      const nextShow = eventos[currentIndex + 1];
+    const currentIndex = allEventos.findIndex(e => e.url_video === url);
+    if (currentIndex !== -1 && currentIndex < allEventos.length - 1) {
+      const nextShow = allEventos[currentIndex + 1];
       handleSelectEvento(nextShow);
     }
   };
@@ -160,12 +169,22 @@ export default function App() {
     localStorage.removeItem('viewedEventUrls');
   };
 
+  const handleAddOnDemand = (newEvento: Evento) => {
+    const updated = [...onDemandEventos, newEvento];
+    setOnDemandEventos(updated);
+    localStorage.setItem('onDemandEventos', JSON.stringify(updated));
+    handleSelectEvento(newEvento); // Auto-play the new video
+  };
+
   const handleToggleFullScreen = () => {
     window.dispatchEvent(new CustomEvent('toggle-video-fullscreen'));
   };
 
+  // Combine static events with on-demand ones
+  const allEventos = [...eventos, ...onDemandEventos];
+
   // Filter out viewed events for the sidebar
-  const availableEventos = eventos.filter(e => !viewedUrls.has(e.url_video));
+  const availableEventos = allEventos.filter(e => !viewedUrls.has(e.url_video));
 
   // TV Navigation support
   useEffect(() => {
@@ -201,7 +220,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
-      <Header />
+      <Header onOpenOnDemand={() => setIsOnDemandOpen(true)} />
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Main Content Area */}
@@ -217,6 +236,7 @@ export default function App() {
               className="w-full max-w-5xl mx-auto"
             >
               <VideoPlayer 
+                key={selectedEvento?.url_video || 'empty'}
                 evento={selectedEvento} 
                 onEnded={(url) => handleMarkAsViewed(url)}
               />
@@ -233,20 +253,26 @@ export default function App() {
           <EventManagerModal 
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}
-            eventos={eventos}
+            eventos={allEventos}
             viewedUrls={viewedUrls}
             onToggleViewed={handleToggleViewed}
             onReset={handleResetViewed}
           />
 
+          <OnDemandFormModal 
+            isOpen={isOnDemandOpen}
+            onClose={() => setIsOnDemandOpen(false)}
+            onAdd={handleAddOnDemand}
+          />
+
           {/* Info Section */}
           <div className="w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-2 bg-slate-900/40 p-6 rounded-2xl border border-slate-800/50">
-              <h3 className="text-xl font-black uppercase italic tracking-tighter mb-4 flex items-center gap-2">
+              <h3 className="text-lg font-black uppercase italic tracking-tighter mb-4 flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-yellow-500" />
                 Sobre el <span className="text-yellow-500">Canal</span>
               </h3>
-              <p className="text-slate-400 leading-relaxed">
+              <p className="text-slate-400 text-xs leading-relaxed">
                 La Era de la Actitud: donde WWE se volvió sin censura y cambió el wrestling para siempre.
               </p>
             </div>
@@ -255,13 +281,18 @@ export default function App() {
               <h3 className="text-xl md:text-2xl font-black uppercase italic tracking-tighter mb-2">Próximo a ver</h3>
               {availableEventos.length > 0 ? (
                 <>
-                  <div className="text-3xl md:text-4xl lg:text-5xl font-black mb-1 truncate leading-none">{availableEventos[0].titulo}</div>
-                  <div className="text-4xl md:text-5xl lg:text-6xl font-black mb-4">{availableEventos[0].duracion || "01:30:00"}</div>
+                  <div className="text-xl md:text-2xl lg:text-3xl font-black mb-1 truncate leading-none">{availableEventos[0].titulo}</div>
+                  <div className="text-2xl md:text-3xl lg:text-4xl font-black mb-4">{availableEventos[0].duracion || "01:30:00"}</div>
                   <p className="text-black/70 text-xs md:text-sm font-bold uppercase tracking-wider">
                     Fecha: {availableEventos[0].fecha.split('-').reverse().join('-')}
                   </p>
                   <button 
-                    onClick={() => handleSelectEvento(availableEventos[0])}
+                    onClick={() => {
+                      handleSelectEvento(availableEventos[0]);
+                      setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('toggle-video-fullscreen'));
+                      }, 500);
+                    }}
                     className="mt-6 w-full bg-black text-white py-3 md:py-4 rounded-xl font-black uppercase text-sm tracking-widest hover:bg-slate-900 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                   >
                     Ver ahora

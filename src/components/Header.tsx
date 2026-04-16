@@ -1,7 +1,11 @@
 import React from 'react';
 import { Trophy, Menu, User, Bell } from 'lucide-react';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onOpenOnDemand?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onOpenOnDemand }) => {
   return (
     <header className="h-12 flex items-center justify-between px-4 bg-slate-950 border-b border-slate-800/50 sticky top-0 z-50">
       <div className="flex items-center gap-2">
@@ -9,7 +13,7 @@ export const Header: React.FC = () => {
           <Trophy className="w-5 h-5 text-black fill-black" />
         </div>
         <div className="flex flex-col">
-          <h1 className="text-lg font-black text-white tracking-tighter uppercase italic leading-none">
+          <h1 className="text-base font-black text-white tracking-tighter uppercase italic leading-none">
             LUCHA<span className="text-yellow-500">STREAM</span>
           </h1>
         </div>
@@ -18,8 +22,16 @@ export const Header: React.FC = () => {
       <div className="hidden md:flex items-center gap-6">
         <nav className="flex items-center gap-6">
           <a href="#" className="text-xs font-bold text-yellow-500 uppercase tracking-widest hover:text-yellow-400 transition-colors">Inicio</a>
-          <a href="#" className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-white transition-colors">Eventos</a>
-          <a href="#" className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-white transition-colors">Noticias</a>
+          <a href="#" className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-white transition-colors">PPV</a>
+          <button 
+            onClick={(e) => {
+              e.preventDefault();
+              onOpenOnDemand?.();
+            }}
+            className="text-xs font-bold text-slate-400 uppercase tracking-widest hover:text-white transition-colors"
+          >
+            On Demand
+          </button>
         </nav>
       </div>
 

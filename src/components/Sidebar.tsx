@@ -31,7 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ eventos, selectedEvento, onSel
       {/* Header / Search */}
       <div className="p-4 space-y-4 border-b border-slate-800/50">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-black text-white tracking-tighter uppercase italic flex items-center gap-2">
+          <h2 className="text-base font-black text-white tracking-tighter uppercase italic flex items-center gap-2">
             <Zap className="w-5 h-5 text-yellow-400 fill-yellow-400" />
             Próximos <span className="text-yellow-400">Eventos</span>
           </h2>
@@ -62,7 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ eventos, selectedEvento, onSel
         </div>
 
         <div className="flex gap-2">
-          {(['TODOS', 'WWE', 'AEW'] as FilterType[]).map((f) => (
+          {(['TODOS', 'PPV', 'ON DEMAND'] as FilterType[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}

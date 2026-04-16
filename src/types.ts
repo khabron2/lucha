@@ -8,4 +8,4 @@ export interface Evento {
   duracion?: string;
 }
 
-export type FilterType = 'TODOS' | 'WWE' | 'AEW';
+export type FilterType = 'TODOS' | 'RAW' | 'SMACKDOWN' | 'PPV' | 'ON DEMAND' | 'WWE' | 'AEW';
